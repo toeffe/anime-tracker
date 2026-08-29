@@ -4,6 +4,14 @@
   "private": true,
   "license": "MIT",
   "author": "toeffe",
+  "homepage": "https://github.com/toeffe/anime-tracker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toeffe/anime-tracker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/toeffe/anime-tracker/issues"
+  },
   "description": "Local desktop library for anime and movies. No account, no API keys.",
   "keywords": [
     "anime",
