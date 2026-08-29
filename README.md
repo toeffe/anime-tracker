@@ -33,14 +33,13 @@ Prebuilt binaries are published under **[Releases](https://github.com/toeffe/ani
 
 ## Privacy
 
-Metadata is fetched from public APIs (AniList, Jikan/MAL, Wikidata). Your watch list, ratings, and progress never leave this computer.
+Metadata is fetched from public APIs (AniList, Jikan/MAL, Wikidata). Your watch list, ratings, and progress never leave your computer.
 
 | Mode | Library file |
 | --- | --- |
 | Packaged app | `tracker.db` next to the `.exe`, unless you pick another folder in Settings |
-| Development | `data/tracker.db`, unless you pick another folder in Settings |
+| Development | `data/tracker.db`, unless you pick another folder in Settings/cog |
 
-That database is gitignored.
 
 ## Development
 
