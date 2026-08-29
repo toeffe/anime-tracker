@@ -4,6 +4,7 @@ import { api } from "../api";
 import { PosterCard } from "../components/PosterCard";
 import { AddMediaModal } from "../components/AddMediaModal";
 import { SettingsModal } from "../components/SettingsModal";
+import { Spinner } from "../components/Spinner";
 import { SuggestionCard } from "../components/SuggestionCard";
 import {
   enqueueAdd,
@@ -12,7 +13,7 @@ import {
   suggestionKey,
 } from "../lib/addQueue";
 import { ipcErrorMessage } from "../lib/errors";
-import type { MediaItem, SearchResultItem } from "../types/shared";
+import { BROWSE_GENRES, type BrowseGenre, type MediaItem, type SearchResultItem } from "../types/shared";
 
 type FilterKey = "foryou" | "all" | "watching" | "planned" | "completed" | "dropped" | "movies";
 
@@ -25,6 +26,15 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "dropped", label: "Dropped" },
   { key: "movies", label: "Movies" },
 ];
+
+type BrowseView = "foryou" | "trending" | BrowseGenre;
+type BrowseCacheEntry = { items: SearchResultItem[]; at: number };
+
+const BROWSE_CACHE_TTL_MS = 30 * 60 * 1000;
+
+function browseCacheKey(view: BrowseView): string {
+  return view === "foryou" || view === "trending" ? view : `genre:${view}`;
+}
 
 function isFilterKey(value: string | null | undefined): value is FilterKey {
   return FILTERS.some((f) => f.key === value);
@@ -67,21 +77,65 @@ export function LibraryPage() {
   const [suggestions, setSuggestions] = useState<SearchResultItem[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  const suggestionsFetched = useRef(false);
+  const [browseView, setBrowseView] = useState<BrowseView>("foryou");
+  const browseCache = useRef(new Map<string, BrowseCacheEntry>());
+  const browseViewRef = useRef<BrowseView>("foryou");
+  const browseInFlight = useRef(new Set<string>());
+  browseViewRef.current = browseView;
   const addQueue = useSyncExternalStore(subscribeAddQueue, getAddQueueSnapshot, getAddQueueSnapshot);
   const queuedKeySet = useMemo(() => new Set(addQueue.queuedKeys), [addQueue.queuedKeys]);
+  const hasLibraryItems = items.length > 0;
 
-  async function loadSuggestions() {
+  function readBrowseCache(key: string): SearchResultItem[] | null {
+    const entry = browseCache.current.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.at > BROWSE_CACHE_TTL_MS) {
+      browseCache.current.delete(key);
+      return null;
+    }
+    return entry.items;
+  }
+
+  function pruneBrowseCache(library: MediaItem[]) {
+    for (const [key, entry] of browseCache.current) {
+      browseCache.current.set(key, {
+        ...entry,
+        items: entry.items.filter((s) => !suggestionInLibrary(library, s)),
+      });
+    }
+  }
+
+  async function loadBrowse(view: BrowseView) {
+    const key = browseCacheKey(view);
+    const cached = readBrowseCache(key);
+    if (cached) {
+      setSuggestions(cached);
+      setSuggestionsError(null);
+      setSuggestionsLoading(false);
+      return;
+    }
+    if (browseInFlight.current.has(key)) return;
+
+    browseInFlight.current.add(key);
     setSuggestionsLoading(true);
     setSuggestionsError(null);
     try {
-      const recs = await api().suggestions.forYou();
-      setSuggestions(recs);
+      const recs =
+        view === "foryou"
+          ? await api().suggestions.forYou()
+          : view === "trending"
+            ? await api().suggestions.trending()
+            : await api().suggestions.byGenre(view);
+      browseCache.current.set(key, { items: recs, at: Date.now() });
+      if (browseViewRef.current === view) setSuggestions(recs);
     } catch (err) {
-      setSuggestions([]);
-      setSuggestionsError(ipcErrorMessage(err));
+      if (browseViewRef.current === view) {
+        setSuggestions([]);
+        setSuggestionsError(ipcErrorMessage(err));
+      }
     } finally {
-      setSuggestionsLoading(false);
+      browseInFlight.current.delete(key);
+      if (browseViewRef.current === view) setSuggestionsLoading(false);
     }
   }
 
@@ -93,6 +147,7 @@ export function LibraryPage() {
     try {
       const list = await api().library.list();
       setItems(list);
+      pruneBrowseCache(list);
       setSuggestions((prev) => prev.filter((s) => !suggestionInLibrary(list, s)));
     } catch (err) {
       setError(ipcErrorMessage(err));
@@ -125,16 +180,17 @@ export function LibraryPage() {
 
   useEffect(() => {
     if (filter !== "foryou") return;
-    if (loading) return;
-    if (items.length === 0) {
-      setSuggestions([]);
-      suggestionsFetched.current = false;
-      return;
+    if (browseView === "foryou") {
+      if (loading) return;
+      if (!hasLibraryItems) {
+        setSuggestions([]);
+        setSuggestionsError(null);
+        setSuggestionsLoading(false);
+        return;
+      }
     }
-    if (suggestionsFetched.current) return;
-    suggestionsFetched.current = true;
-    void loadSuggestions();
-  }, [filter, items.length, loading]);
+    void loadBrowse(browseView);
+  }, [filter, browseView, hasLibraryItems, loading]);
 
   const filtered = useMemo(() => {
     let list = items;
@@ -209,46 +265,81 @@ export function LibraryPage() {
 
       {showForYou ? (
         <section className="for-you">
+          <div className="browse-nav">
+            <div className="filter-tabs browse-tabs">
+              <button
+                className={browseView === "foryou" ? "active" : ""}
+                onClick={() => setBrowseView("foryou")}
+              >
+                For you
+              </button>
+              <button
+                className={browseView === "trending" ? "active" : ""}
+                onClick={() => setBrowseView("trending")}
+              >
+                Trending
+              </button>
+            </div>
+            <div className="genre-chips">
+              {BROWSE_GENRES.map((genre) => (
+                <button
+                  key={genre}
+                  className={browseView === genre ? "active" : ""}
+                  onClick={() => setBrowseView(genre)}
+                >
+                  {genre}
+                </button>
+              ))}
+            </div>
+          </div>
           {suggestionsLoading ? (
-            <p className="dim">Finding titles that match your ratings…</p>
+            <Spinner
+              label={
+                browseView === "foryou"
+                  ? "Finding titles that match your ratings…"
+                  : browseView === "trending"
+                    ? "Loading trending…"
+                    : `Loading ${browseView}…`
+              }
+            />
           ) : suggestionsError && suggestions.length === 0 ? (
             <p className="dim">{suggestionsError}</p>
           ) : suggestions.length > 0 ? (
-            <>
-              <div className="poster-grid">
-                {suggestions.map((item) => {
-                  const key = suggestionKey(item);
-                  const status =
-                    addQueue.addingKey === key
-                      ? "adding"
-                      : queuedKeySet.has(key)
-                        ? "queued"
-                        : "idle";
-                  return (
-                    <SuggestionCard
-                      key={key}
-                      item={item}
-                      status={status}
-                      onAdd={addSuggestion}
-                    />
-                  );
-                })}
-              </div>
-            </>
+            <div className="poster-grid">
+              {suggestions.map((item) => {
+                const key = suggestionKey(item);
+                const status =
+                  addQueue.addingKey === key
+                    ? "adding"
+                    : queuedKeySet.has(key)
+                      ? "queued"
+                      : "idle";
+                return (
+                  <SuggestionCard
+                    key={key}
+                    item={item}
+                    status={status}
+                    onAdd={addSuggestion}
+                  />
+                );
+              })}
+            </div>
           ) : (
             <div className="empty-state">
               <p>
-                {items.length === 0
-                  ? "Add and rate titles in your library to get suggestions."
-                  : hasHighRating || hasAnyRating
-                    ? "No extra suggestions right now — try rating more titles."
-                    : "Rate a few titles 7 or higher to get suggestions."}
+                {browseView === "foryou"
+                  ? items.length === 0
+                    ? "Add and rate titles in your library to get suggestions."
+                    : hasHighRating || hasAnyRating
+                      ? "No extra suggestions right now — try rating more titles."
+                      : "Rate a few titles 7 or higher to get suggestions."
+                  : "Nothing here right now."}
               </p>
             </div>
           )}
         </section>
       ) : loading ? (
-        <p className="dim">Loading library…</p>
+        <Spinner label="Loading library…" />
       ) : filtered.length === 0 ? (
         <div className="empty-state">
           <p>{items.length === 0 ? "Nothing here yet." : "Nothing matches this filter."}</p>
@@ -276,7 +367,7 @@ export function LibraryPage() {
         <SettingsModal
           onClose={() => setSettingsOpen(false)}
           onLibraryChanged={() => {
-            suggestionsFetched.current = false;
+            browseCache.current.clear();
             void refresh();
           }}
         />

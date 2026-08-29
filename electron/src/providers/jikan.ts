@@ -76,6 +76,11 @@ export async function fetchJikanAnime(id: string): Promise<SearchResultItem> {
   return toResult(data.data, kind);
 }
 
+export async function fetchJikanTrending(): Promise<SearchResultItem[]> {
+  const data = await fetchJson<{ data?: JikanAnime[] }>(`${BASE}/top/anime?limit=25&sfw=true`);
+  return (data.data ?? []).map((a) => toResult(a, a.type === "Movie" ? "movie" : "anime"));
+}
+
 export async function fetchJikanRecommendations(
   id: string
 ): Promise<{ item: SearchResultItem; strength: number }[]> {

@@ -61,6 +61,27 @@ export interface Trailer {
   watchUrl: string;
 }
 
+export const BROWSE_GENRES = [
+  "Action",
+  "Adventure",
+  "Comedy",
+  "Drama",
+  "Fantasy",
+  "Horror",
+  "Mecha",
+  "Music",
+  "Mystery",
+  "Psychological",
+  "Romance",
+  "Sci-Fi",
+  "Slice of Life",
+  "Sports",
+  "Supernatural",
+  "Thriller",
+] as const;
+
+export type BrowseGenre = (typeof BROWSE_GENRES)[number];
+
 export interface AddMediaResult {
   item: MediaItem;
   alreadyInLibrary: boolean;
@@ -109,6 +130,8 @@ export interface AnimeTrackerAPI {
   };
   suggestions: {
     forYou(): Promise<SearchResultItem[]>;
+    trending(): Promise<SearchResultItem[]>;
+    byGenre(genre: string): Promise<SearchResultItem[]>;
   };
   trailer: {
     lookup(source: string, id: string): Promise<Trailer | null>;

@@ -288,6 +288,53 @@ export async function fetchAniListTrailer(id: string): Promise<Trailer | null> {
   return trailerFromSite(data.Media?.trailer?.site, data.Media?.trailer?.id);
 }
 
+const BROWSE_FIELDS = `
+  id
+  title { romaji english }
+  coverImage { extraLarge large }
+  description(asHtml: false)
+  episodes
+  format
+  seasonYear
+  startDate { year }
+`;
+
+function toBrowseResults(media: AniListMedia[] | null): SearchResultItem[] {
+  return (media ?? []).map((m) => mediaToSearchResult(m));
+}
+
+export async function fetchAniListTrending(): Promise<SearchResultItem[]> {
+  const data = await graphql<{
+    Page: { media: AniListMedia[] | null };
+  }>(
+    `query {
+      Page(page: 1, perPage: 24) {
+        media(type: ANIME, sort: TRENDING_DESC, isAdult: false) {
+          ${BROWSE_FIELDS}
+        }
+      }
+    }`,
+    {}
+  );
+  return toBrowseResults(data.Page.media);
+}
+
+export async function fetchAniListByGenre(genre: string): Promise<SearchResultItem[]> {
+  const data = await graphql<{
+    Page: { media: AniListMedia[] | null };
+  }>(
+    `query ($genre: String) {
+      Page(page: 1, perPage: 24) {
+        media(type: ANIME, genre: $genre, sort: POPULARITY_DESC, isAdult: false) {
+          ${BROWSE_FIELDS}
+        }
+      }
+    }`,
+    { genre }
+  );
+  return toBrowseResults(data.Page.media);
+}
+
 export function mediaToSearchResult(m: AniListMedia): SearchResultItem {
   const isMovie = m.format === "MOVIE";
   return {

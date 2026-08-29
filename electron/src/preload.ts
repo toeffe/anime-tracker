@@ -48,6 +48,8 @@ const api: AnimeTrackerAPI = {
   },
   suggestions: {
     forYou: () => ipcRenderer.invoke("suggestions:forYou"),
+    trending: () => ipcRenderer.invoke("suggestions:trending"),
+    byGenre: (genre: string) => ipcRenderer.invoke("suggestions:byGenre", genre),
   },
   trailer: {
     lookup: (source: string, id: string) => ipcRenderer.invoke("trailer:lookup", source, id),

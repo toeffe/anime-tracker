@@ -235,5 +235,7 @@ function registerIpcHandlers() {
     return store.getSettings();
   });
   ipcMain.handle("suggestions:forYou", () => store.suggestionsForYou());
+  ipcMain.handle("suggestions:trending", () => store.suggestionsTrending());
+  ipcMain.handle("suggestions:byGenre", (_e, genre: string) => store.suggestionsByGenre(genre));
   ipcMain.handle("trailer:lookup", (_e, source: string, id: string) => store.lookupTrailer(source, id));
 }

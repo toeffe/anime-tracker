@@ -22,9 +22,9 @@
 ## Features
 
 - Search AniList, MyAnimeList, and Wikidata
-- Track seasons and episodes, with star ratings
-- **For you** suggestions based on what you rated
-- In-app trailers
+- Track seasons and episodes, with star ratings — mark a whole season watched or unwatched in one click
+- **For you** recommendations from your ratings, plus **Trending** and genre browse. Titles already in your library are hidden. Add queues in the background
+- In-app trailers (start when you press play)
 - One portable Windows build — `tracker.db` lives next to the `.exe` (or a folder you pick in Settings)
 
 ## Download

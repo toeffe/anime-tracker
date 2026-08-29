@@ -10,12 +10,15 @@ import type {
   Trailer,
   WatchStatus,
 } from "../types/shared";
+import { BROWSE_GENRES } from "../types/shared";
 import { getDb, getDbPath, isUsingCustomLibraryDir, withTransaction } from "./db";
 import {
   episodeCountFor,
   fetchAnime,
+  fetchAniListByGenre,
   fetchAniListRecommendations,
   fetchAniListDetails,
+  fetchAniListTrending,
   pickCover,
   pickTitle,
   searchAniListMovies,
@@ -27,6 +30,7 @@ import {
 import {
   fetchJikanAnime,
   fetchJikanRecommendations,
+  fetchJikanTrending,
   searchJikanAnime,
   searchJikanMovies,
 } from "./providers/jikan";
@@ -79,6 +83,37 @@ function delay(ms: number): Promise<void> {
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function libraryDedupeKeys(library: MediaItem[]): { ids: Set<string>; titles: Set<string> } {
+  const ids = new Set<string>();
+  const titles = new Set<string>();
+  for (const item of library) {
+    if (item.externalSource && item.externalId) {
+      ids.add(`${item.externalSource}:${item.externalId}`);
+    }
+    titles.add(normalizeTitle(item.title));
+    for (const season of item.seasons) {
+      if (season.externalId && item.externalSource) {
+        ids.add(`${item.externalSource}:${season.externalId}`);
+      }
+    }
+  }
+  return { ids, titles };
+}
+
+function excludeInLibrary(results: SearchResultItem[]): SearchResultItem[] {
+  const { ids, titles } = libraryDedupeKeys(hydrateAll());
+  return results.filter((item) => {
+    const idKey = `${item.externalSource}:${item.externalId}`;
+    if (ids.has(idKey)) return false;
+    if (titles.has(normalizeTitle(item.title))) return false;
+    return true;
+  });
+}
+
+function isBrowseGenre(genre: string): genre is (typeof BROWSE_GENRES)[number] {
+  return (BROWSE_GENRES as readonly string[]).includes(genre);
 }
 
 function rowToMedia(row: MediaRow, seasons: Season[]): MediaItem {
@@ -610,19 +645,7 @@ export const store = {
     const high = rated.filter((item) => (item.rating ?? 0) >= 7).slice(0, 5);
     const seeds = high.length > 0 ? high : rated.slice(0, 3);
 
-    const inLibraryIds = new Set<string>();
-    const inLibraryTitles = new Set<string>();
-    for (const item of library) {
-      if (item.externalSource && item.externalId) {
-        inLibraryIds.add(`${item.externalSource}:${item.externalId}`);
-      }
-      inLibraryTitles.add(normalizeTitle(item.title));
-      for (const season of item.seasons) {
-        if (season.externalId && item.externalSource) {
-          inLibraryIds.add(`${item.externalSource}:${season.externalId}`);
-        }
-      }
-    }
+    const { ids: inLibraryIds, titles: inLibraryTitles } = libraryDedupeKeys(library);
 
     const jobs = seeds.map((seed, index) => (async () => {
       if (!seed.externalId || seed.rating === null) return [] as { item: SearchResultItem; score: number }[];
@@ -656,6 +679,21 @@ export const store = {
       .sort((a, b) => b.score - a.score)
       .slice(0, 12)
       .map((row) => row.item);
+  },
+
+  async suggestionsTrending(): Promise<SearchResultItem[]> {
+    try {
+      return excludeInLibrary(await fetchAniListTrending());
+    } catch {
+      return excludeInLibrary(await fetchJikanTrending());
+    }
+  },
+
+  async suggestionsByGenre(genre: string): Promise<SearchResultItem[]> {
+    if (!isBrowseGenre(genre)) {
+      throw new Error("Unknown genre.");
+    }
+    return excludeInLibrary(await fetchAniListByGenre(genre));
   },
 
   lookupTrailer(source: string, id: string): Promise<Trailer | null> {
