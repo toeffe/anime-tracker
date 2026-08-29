@@ -20,6 +20,14 @@ export function MediaDetailPage() {
   const [item, setItem] = useState<MediaItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  function focusHost() {
+    document.querySelectorAll("webview").forEach((node) => {
+      (node as HTMLElement).blur();
+    });
+    window.focus();
+  }
 
   async function refresh(showSpinner = false) {
     if (!id) return;
@@ -36,6 +44,7 @@ export function MediaDetailPage() {
   }
 
   useEffect(() => {
+    setConfirmRemove(false);
     refresh(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -64,20 +73,40 @@ export function MediaDetailPage() {
         <button className="back-link" onClick={() => navigate("/")}>
           ← Library
         </button>
-        <button
-          className="danger-button"
-          onClick={async () => {
-            if (!confirm(`Remove “${item.title}” from your library?`)) return;
-            try {
-              await api().library.remove(item.id);
-              navigate("/");
-            } catch (err) {
-              setError(ipcErrorMessage(err));
-            }
-          }}
-        >
-          Remove
-        </button>
+        {confirmRemove ? (
+          <div className="remove-confirm">
+            <span>Remove this title?</span>
+            <button type="button" onClick={() => setConfirmRemove(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="danger-button"
+              onClick={async () => {
+                focusHost();
+                try {
+                  await api().library.remove(item.id);
+                  window.focus();
+                  navigate("/");
+                } catch (err) {
+                  setError(ipcErrorMessage(err));
+                }
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <button
+            className="danger-button"
+            onClick={() => {
+              focusHost();
+              setConfirmRemove(true);
+            }}
+          >
+            Remove
+          </button>
+        )}
       </div>
       {item.kind === "movie" ? (
         <MovieDetail item={item} onChange={() => refresh(false)} />

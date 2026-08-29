@@ -4,6 +4,7 @@ import { app } from "electron";
 import Database from "better-sqlite3";
 
 const SAVE_NAME = "tracker.db";
+const LOCATION_FILE = "library-location.json";
 
 let db: Database.Database | null = null;
 let dbPathResolved: string | null = null;
@@ -27,6 +28,7 @@ export function closeDb(): void {
     db.close();
     db = null;
   }
+  dbPathResolved = null;
 }
 
 function isWritableDir(dir: string): boolean {
@@ -52,10 +54,83 @@ function preferredDataDir(): string {
   return path.join(process.cwd(), "data");
 }
 
+export function defaultLibraryDir(): string {
+  const preferred = preferredDataDir();
+  return isWritableDir(preferred) ? preferred : app.getPath("userData");
+}
+
+function locationConfigPath(): string {
+  return path.join(app.getPath("userData"), LOCATION_FILE);
+}
+
+function readLibraryDirOverride(): string | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(locationConfigPath(), "utf8")) as {
+      dataDir?: unknown;
+    };
+    if (typeof parsed.dataDir === "string" && parsed.dataDir.trim()) {
+      return path.resolve(parsed.dataDir.trim());
+    }
+  } catch {
+    /* missing or invalid */
+  }
+  return null;
+}
+
+function writeLibraryDirOverride(dir: string | null): void {
+  const file = locationConfigPath();
+  if (dir === null) {
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+    return;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify({ dataDir: dir }, null, 2)}\n`, "utf8");
+}
+
+function resolveLibraryDir(): string {
+  const override = readLibraryDirOverride();
+  if (override && isWritableDir(override)) return override;
+  return defaultLibraryDir();
+}
+
+export function isUsingCustomLibraryDir(): boolean {
+  const override = readLibraryDirOverride();
+  if (!override || !dbPathResolved) return false;
+  return path.resolve(override) === path.resolve(path.dirname(dbPathResolved));
+}
+
 function copyIfPresent(from: string, to: string) {
   if (fs.existsSync(from) && !fs.existsSync(to)) {
     fs.copyFileSync(from, to);
   }
+}
+
+function copyLibraryFiles(fromFile: string, destFile: string) {
+  if (!fs.existsSync(fromFile) || fs.existsSync(destFile)) return;
+  fs.copyFileSync(fromFile, destFile);
+  copyIfPresent(`${fromFile}-wal`, `${destFile}-wal`);
+  copyIfPresent(`${fromFile}-shm`, `${destFile}-shm`);
+}
+
+export function setLibraryDir(nextDir: string): string {
+  const destDir = path.resolve(nextDir);
+  if (!isWritableDir(destDir)) {
+    throw new Error("That folder isn't writable.");
+  }
+  const fromFile = dbPathResolved;
+  const destFile = path.join(destDir, SAVE_NAME);
+  closeDb();
+  if (fromFile && path.resolve(fromFile) !== path.resolve(destFile)) {
+    copyLibraryFiles(fromFile, destFile);
+  }
+  const useDefault = path.resolve(destDir) === path.resolve(defaultLibraryDir());
+  writeLibraryDirOverride(useDefault ? null : destDir);
+  initDb();
+  return getDbPath();
+}
+
+export function resetLibraryDir(): string {
+  return setLibraryDir(defaultLibraryDir());
 }
 
 function migrateLegacySave(destDir: string) {
@@ -71,8 +146,7 @@ function migrateLegacySave(destDir: string) {
 }
 
 export function initDb(): Database.Database {
-  const preferred = preferredDataDir();
-  const dir = isWritableDir(preferred) ? preferred : app.getPath("userData");
+  const dir = resolveLibraryDir();
   fs.mkdirSync(dir, { recursive: true });
   migrateLegacySave(dir);
 

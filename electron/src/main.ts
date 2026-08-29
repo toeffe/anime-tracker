@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell, type OpenDialogOptions } from "electron";
 import * as path from "path";
-import { closeDb, getDbPath, initDb } from "./db";
+import { closeDb, getDbPath, initDb, resetLibraryDir, setLibraryDir } from "./db";
 import { store } from "./store";
 import type { SearchResultItem, MediaKind, WatchStatus } from "../types/shared";
 
@@ -211,6 +211,24 @@ function registerIpcHandlers() {
   ipcMain.handle("settings:get", () => store.getSettings());
   ipcMain.handle("settings:showSaveFile", () => {
     shell.showItemInFolder(getDbPath());
+  });
+  ipcMain.handle("settings:chooseLibraryDir", async () => {
+    const win = BrowserWindow.getFocusedWindow();
+    const options: OpenDialogOptions = {
+      title: "Library folder",
+      defaultPath: path.dirname(getDbPath()),
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return null;
+    setLibraryDir(result.filePaths[0]);
+    return store.getSettings();
+  });
+  ipcMain.handle("settings:resetLibraryDir", () => {
+    resetLibraryDir();
+    return store.getSettings();
   });
   ipcMain.handle("suggestions:forYou", () => store.suggestionsForYou());
   ipcMain.handle("trailer:lookup", (_e, source: string, id: string) => store.lookupTrailer(source, id));

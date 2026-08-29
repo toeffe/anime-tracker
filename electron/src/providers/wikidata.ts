@@ -1,12 +1,14 @@
 import type { SearchResultItem, Trailer } from "../../types/shared";
-import { fetchJson, USER_AGENT } from "./http";
+import { fetchJson, httpsUrl, USER_AGENT } from "./http";
 import { trailerFromSite } from "./trailerFormat";
 
 interface SparqlBinding {
   item?: { value: string };
   itemLabel?: { value: string };
   year?: { value: string };
+  poster?: { value: string };
   pic?: { value: string };
+  enwiki?: { value: string };
   desc?: { value: string };
 }
 
@@ -42,7 +44,36 @@ export async function fetchWikidataTrailer(qid: string): Promise<Trailer | null>
 
 function posterFromPic(pic: string | undefined): string | null {
   if (!pic) return null;
-  return `${pic}${pic.includes("?") ? "&" : "?"}width=500`;
+  return httpsUrl(`${pic}${pic.includes("?") ? "&" : "?"}width=500`);
+}
+
+function cleanImageUrl(url: string): string {
+  const cut = url.indexOf("?");
+  return httpsUrl(cut === -1 ? url : url.slice(0, cut));
+}
+
+async function fetchWikipediaPoster(title: string): Promise<string | null> {
+  const slug = encodeURIComponent(title.trim().replace(/ /g, "_"));
+  if (!slug) return null;
+  try {
+    const data = await fetchJson<{
+      originalimage?: { source?: string };
+      thumbnail?: { source?: string };
+    }>(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`, {
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    });
+    const src = data.originalimage?.source ?? data.thumbnail?.source;
+    return src ? cleanImageUrl(src) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function posterForRow(row: SparqlBinding): Promise<string | null> {
+  const fromWikidata = posterFromPic(row.poster?.value) ?? posterFromPic(row.pic?.value);
+  if (fromWikidata) return fromWikidata;
+  if (!row.enwiki?.value) return null;
+  return fetchWikipediaPoster(row.enwiki.value);
 }
 
 export async function fetchWikidataFilm(qid: string): Promise<SearchResultItem> {
@@ -51,10 +82,16 @@ export async function fetchWikidataFilm(qid: string): Promise<SearchResultItem> 
   }
   const id = qid.toUpperCase();
   const sparql = `
-    SELECT ?itemLabel ?year ?pic ?desc WHERE {
+    SELECT ?itemLabel ?year ?poster ?pic ?enwiki ?desc WHERE {
       BIND(wd:${id} AS ?item)
       OPTIONAL { ?item wdt:P577 ?date. BIND(YEAR(?date) AS ?year) }
+      OPTIONAL { ?item wdt:P3383 ?poster. }
       OPTIONAL { ?item wdt:P18 ?pic. }
+      OPTIONAL {
+        ?wikipage schema:about ?item ;
+                  schema:isPartOf <https://en.wikipedia.org/> ;
+                  schema:name ?enwiki.
+      }
       OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
     }
@@ -77,7 +114,7 @@ export async function fetchWikidataFilm(qid: string): Promise<SearchResultItem> 
     externalId: id,
     kind: "movie",
     title,
-    posterUrl: posterFromPic(row.pic?.value),
+    posterUrl: await posterForRow(row),
     overview: row.desc?.value ?? null,
     year: row.year?.value ? Number(row.year.value) || null : null,
     episodeCount: null,
@@ -89,7 +126,7 @@ export async function searchWikidataFilms(term: string): Promise<SearchResultIte
   if (!q) return [];
 
   const sparql = `
-    SELECT DISTINCT ?item ?itemLabel ?year ?pic ?desc WHERE {
+    SELECT DISTINCT ?item ?itemLabel ?year ?poster ?pic ?enwiki ?desc WHERE {
       SERVICE wikibase:mwapi {
         bd:serviceParam wikibase:api "EntitySearch".
         bd:serviceParam wikibase:endpoint "www.wikidata.org".
@@ -99,7 +136,13 @@ export async function searchWikidataFilms(term: string): Promise<SearchResultIte
       }
       ?item wdt:P31/wdt:P279* wd:Q11424.
       OPTIONAL { ?item wdt:P577 ?date. BIND(YEAR(?date) AS ?year) }
+      OPTIONAL { ?item wdt:P3383 ?poster. }
       OPTIONAL { ?item wdt:P18 ?pic. }
+      OPTIONAL {
+        ?wikipage schema:about ?item ;
+                  schema:isPartOf <https://en.wikipedia.org/> ;
+                  schema:name ?enwiki.
+      }
       OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
     }
@@ -117,7 +160,7 @@ export async function searchWikidataFilms(term: string): Promise<SearchResultIte
   });
 
   const seen = new Set<string>();
-  const out: SearchResultItem[] = [];
+  const pending: Promise<SearchResultItem>[] = [];
   for (const row of data.results?.bindings ?? []) {
     const uri = row.item?.value;
     const title = row.itemLabel?.value;
@@ -125,16 +168,18 @@ export async function searchWikidataFilms(term: string): Promise<SearchResultIte
     const id = qidFromUri(uri);
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({
-      externalSource: "wikidata",
-      externalId: id,
-      kind: "movie",
-      title,
-      posterUrl: posterFromPic(row.pic?.value),
-      overview: row.desc?.value ?? null,
-      year: row.year?.value ? Number(row.year.value) || null : null,
-      episodeCount: null,
-    });
+    pending.push(
+      posterForRow(row).then((posterUrl) => ({
+        externalSource: "wikidata" as const,
+        externalId: id,
+        kind: "movie" as const,
+        title,
+        posterUrl,
+        overview: row.desc?.value ?? null,
+        year: row.year?.value ? Number(row.year.value) || null : null,
+        episodeCount: null,
+      }))
+    );
   }
-  return out;
+  return Promise.all(pending);
 }

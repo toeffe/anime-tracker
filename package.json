@@ -34,7 +34,7 @@
     "build:electron": "tsc -p electron/tsconfig.json",
     "build": "npm run build:renderer && npm run build:electron",
     "start": "electron .",
-    "package": "npm run build && electron-builder"
+    "package": "npm run build && node scripts/package-win.cjs"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -52,6 +52,8 @@
     "appId": "com.local.animetracker",
     "productName": "Anime Tracker",
     "icon": "build/icon.ico",
+    "afterPack": "./scripts/after-pack.cjs",
+    "afterAllArtifactBuild": "./scripts/after-all-artifact-build.cjs",
     "files": [
       "electron/dist/**/*",
       "renderer/dist/**/*",
@@ -70,8 +72,17 @@
       "output": "release"
     },
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "build/nsis-icon.ico",
+      "signAndEditExecutable": true,
       "target": ["portable"]
+    },
+    "nsis": {
+      "installerIcon": "build/nsis-icon.ico",
+      "uninstallerIcon": "build/nsis-icon.ico",
+      "installerHeaderIcon": "build/nsis-icon.ico"
+    },
+    "portable": {
+      "artifactName": "AnimeTracker-${version}.${ext}"
     }
   }
 }

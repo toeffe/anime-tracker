@@ -41,6 +41,8 @@ const api: AnimeTrackerAPI = {
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     showSaveFile: () => ipcRenderer.invoke("settings:showSaveFile"),
+    chooseLibraryDir: () => ipcRenderer.invoke("settings:chooseLibraryDir"),
+    resetLibraryDir: () => ipcRenderer.invoke("settings:resetLibraryDir"),
   },
   suggestions: {
     forYou: () => ipcRenderer.invoke("suggestions:forYou"),

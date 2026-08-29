@@ -10,7 +10,7 @@ import type {
   Trailer,
   WatchStatus,
 } from "../types/shared";
-import { getDb, getDbPath, withTransaction } from "./db";
+import { getDb, getDbPath, isUsingCustomLibraryDir, withTransaction } from "./db";
 import {
   episodeCountFor,
   fetchAnime,
@@ -32,6 +32,7 @@ import {
 } from "./providers/jikan";
 import { raceSources } from "./providers/merge";
 import { lookupTrailer as fetchTrailer } from "./providers/trailer";
+import { httpsUrl } from "./providers/http";
 import { searchWikidataFilms, fetchWikidataFilm } from "./providers/wikidata";
 
 interface MediaRow {
@@ -85,7 +86,7 @@ function rowToMedia(row: MediaRow, seasons: Season[]): MediaItem {
     id: row.id,
     kind: row.kind,
     title: row.title,
-    posterUrl: row.poster_url,
+    posterUrl: row.poster_url ? httpsUrl(row.poster_url) : null,
     overview: row.overview,
     status: row.status,
     rating: row.rating,
@@ -249,7 +250,7 @@ function insertMedia(item: {
       item.id,
       item.kind,
       item.title,
-      item.posterUrl,
+      item.posterUrl ? httpsUrl(item.posterUrl) : null,
       item.overview,
       item.status,
       item.rating,
@@ -418,12 +419,48 @@ function insertAnimeSingleSeason(result: SearchResultItem, episodeCount: number)
   return requireMedia(mediaId);
 }
 
+async function backfillMissingMoviePosters(mediaId?: string): Promise<void> {
+  const rows = (
+    mediaId
+      ? getDb()
+          .prepare(
+            `SELECT id, external_source, external_id FROM media
+             WHERE id = ? AND kind = 'movie'
+               AND (poster_url IS NULL OR poster_url = '')
+               AND external_source = 'wikidata' AND external_id IS NOT NULL`
+          )
+          .all(mediaId)
+      : getDb()
+          .prepare(
+            `SELECT id, external_source, external_id FROM media
+             WHERE kind = 'movie'
+               AND (poster_url IS NULL OR poster_url = '')
+               AND external_source = 'wikidata' AND external_id IS NOT NULL`
+          )
+          .all()
+  ) as { id: string; external_source: string; external_id: string }[];
+
+  for (const row of rows) {
+    try {
+      const film = await fetchWikidataFilm(row.external_id);
+      if (!film.posterUrl) continue;
+      getDb()
+        .prepare("UPDATE media SET poster_url = ?, updated_at = ? WHERE id = ?")
+        .run(httpsUrl(film.posterUrl), nowIso(), row.id);
+    } catch {
+      /* leave placeholder if Wikipedia/Wikidata is down */
+    }
+  }
+}
+
 export const store = {
-  list(): MediaItem[] {
+  async list(): Promise<MediaItem[]> {
+    await backfillMissingMoviePosters();
     return hydrateAll();
   },
 
-  get(id: string): MediaItem | null {
+  async get(id: string): Promise<MediaItem | null> {
+    await backfillMissingMoviePosters(id);
     return hydrateOne(id);
   },
 
@@ -476,6 +513,13 @@ export const store = {
     } else if (result.externalSource === "jikan") {
       try {
         details = { ...result, ...(await fetchJikanAnime(result.externalId)), kind: "movie" };
+      } catch {
+        details = result;
+      }
+    } else if (result.externalSource === "wikidata") {
+      try {
+        const film = await fetchWikidataFilm(result.externalId);
+        details = { ...result, ...film, kind: "movie" };
       } catch {
         details = result;
       }
@@ -534,7 +578,10 @@ export const store = {
   },
 
   getSettings(): AppSettings {
-    return { savePath: getDbPath() };
+    return {
+      savePath: getDbPath(),
+      usingCustomDir: isUsingCustomLibraryDir(),
+    };
   },
 
   async suggestionsForYou(): Promise<SearchResultItem[]> {

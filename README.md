@@ -25,11 +25,11 @@
 - Track seasons and episodes, with star ratings
 - **For you** suggestions based on what you rated
 - In-app trailers
-- One portable Windows build — `tracker.db` lives next to the `.exe`
+- One portable Windows build — `tracker.db` lives next to the `.exe` (or a folder you pick in Settings)
 
 ## Download
 
-Prebuilt binaries are published under **[Releases](https://github.com/toeffe/anime-tracker/releases)**. Use the latest Windows portable `.exe`. No installer: put it in a folder and run it. The library file (`tracker.db`) is created beside the executable.
+Prebuilt binaries are published under **[Releases](https://github.com/toeffe/anime-tracker/releases)**. Use the latest Windows portable `.exe`. No installer: put it in a folder and run it. By default the library file (`tracker.db`) is created beside the executable. Settings can point it at another folder.
 
 ## Privacy
 
@@ -37,8 +37,8 @@ Metadata is fetched from public APIs (AniList, Jikan/MAL, Wikidata). Your watch 
 
 | Mode | Library file |
 | --- | --- |
-| Packaged app | `tracker.db` next to the `.exe` |
-| Development | `data/tracker.db` |
+| Packaged app | `tracker.db` next to the `.exe`, unless you pick another folder in Settings |
+| Development | `data/tracker.db`, unless you pick another folder in Settings |
 
 That database is gitignored.
 

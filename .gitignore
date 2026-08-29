@@ -5,6 +5,8 @@ node_modules/
 electron/dist/
 renderer/dist/
 release/
+release-icon-test/
+release-fresh/
 out/
 dist/
 
@@ -41,3 +43,4 @@ Desktop.ini
 .idea/
 .cursor/
 *.swp
+.cursorignore

@@ -230,7 +230,12 @@ export function LibraryPage() {
           onAdded={refresh}
         />
       )}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          onLibraryChanged={refresh}
+        />
+      )}
     </div>
   );
 }

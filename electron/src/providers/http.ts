@@ -1,5 +1,9 @@
 export const USER_AGENT = "AnimeTracker/0.1 (local desktop library)";
 
+export function httpsUrl(url: string): string {
+  return url.startsWith("http://") ? `https://${url.slice("http://".length)}` : url;
+}
+
 export async function fetchJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");

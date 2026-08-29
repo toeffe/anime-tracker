@@ -68,6 +68,7 @@ export interface AddMediaResult {
 
 export interface AppSettings {
   savePath: string;
+  usingCustomDir: boolean;
 }
 
 // ---- IPC contract ----
@@ -102,6 +103,8 @@ export interface AnimeTrackerAPI {
   settings: {
     get(): Promise<AppSettings>;
     showSaveFile(): Promise<void>;
+    chooseLibraryDir(): Promise<AppSettings | null>;
+    resetLibraryDir(): Promise<AppSettings>;
   };
   suggestions: {
     forYou(): Promise<SearchResultItem[]>;
