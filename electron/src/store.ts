@@ -479,12 +479,20 @@ export const store = {
 
   async addFromSearchResult(result: SearchResultItem): Promise<AddMediaResult> {
     if (result.kind === "anime" && result.externalSource === "anilist") {
-      const chain = await walkSeasonChain(Number(result.externalId));
-      const ids = chain.map((m) => String(m.id));
-      const existing = findByExternalIds("anilist", ids);
-      if (existing) return { item: existing, alreadyInLibrary: true };
-      const item = withTransaction(() => insertAnimeFromChain(chain));
-      return { item, alreadyInLibrary: false };
+      try {
+        const chain = await walkSeasonChain(Number(result.externalId));
+        const ids = chain.map((m) => String(m.id));
+        const existing = findByExternalIds("anilist", ids);
+        if (existing) return { item: existing, alreadyInLibrary: true };
+        const item = withTransaction(() => insertAnimeFromChain(chain));
+        return { item, alreadyInLibrary: false };
+      } catch {
+        const existing = findByExternalIds("anilist", [result.externalId]);
+        if (existing) return { item: existing, alreadyInLibrary: true };
+        const count = result.episodeCount ?? 12;
+        const item = withTransaction(() => insertAnimeSingleSeason(result, count));
+        return { item, alreadyInLibrary: false };
+      }
     }
 
     if (result.kind === "anime" && result.externalSource === "jikan") {
@@ -552,6 +560,16 @@ export const store = {
     if (!season) throw new Error(`Season ${seasonId} not found`);
     getDb().prepare("UPDATE seasons SET rating = ? WHERE id = ?").run(rating, seasonId);
     getDb().prepare("UPDATE media SET updated_at = ? WHERE id = ?").run(nowIso(), season.media_id);
+    return requireMedia(season.media_id);
+  },
+
+  markSeasonEpisodesWatched(seasonId: string, watched: boolean): MediaItem {
+    const season = getDb().prepare("SELECT media_id FROM seasons WHERE id = ?").get(seasonId) as
+      | { media_id: string }
+      | undefined;
+    if (!season) throw new Error(`Season ${seasonId} not found`);
+    getDb().prepare("UPDATE episodes SET watched = ? WHERE season_id = ?").run(watched ? 1 : 0, seasonId);
+    recomputeAndPersist(season.media_id);
     return requireMedia(season.media_id);
   },
 

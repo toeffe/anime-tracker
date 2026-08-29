@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation } from "react-router-dom";
 import { api } from "../api";
 import { PosterCard } from "../components/PosterCard";
 import { AddMediaModal } from "../components/AddMediaModal";
 import { SettingsModal } from "../components/SettingsModal";
 import { SuggestionCard } from "../components/SuggestionCard";
+import {
+  enqueueAdd,
+  getAddQueueSnapshot,
+  subscribeAddQueue,
+  suggestionKey,
+} from "../lib/addQueue";
 import { ipcErrorMessage } from "../lib/errors";
 import type { MediaItem, SearchResultItem } from "../types/shared";
 
@@ -22,6 +28,18 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 function isFilterKey(value: string | null | undefined): value is FilterKey {
   return FILTERS.some((f) => f.key === value);
+}
+
+function suggestionInLibrary(library: MediaItem[], suggestion: SearchResultItem): boolean {
+  return library.some((item) => {
+    if (item.externalSource === suggestion.externalSource && item.externalId === suggestion.externalId) {
+      return true;
+    }
+    return (
+      item.externalSource === suggestion.externalSource &&
+      item.seasons.some((season) => season.externalId === suggestion.externalId)
+    );
+  });
 }
 
 function initialFilter(tab: unknown): FilterKey {
@@ -49,7 +67,9 @@ export function LibraryPage() {
   const [suggestions, setSuggestions] = useState<SearchResultItem[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  const [addingKey, setAddingKey] = useState<string | null>(null);
+  const suggestionsFetched = useRef(false);
+  const addQueue = useSyncExternalStore(subscribeAddQueue, getAddQueueSnapshot, getAddQueueSnapshot);
+  const queuedKeySet = useMemo(() => new Set(addQueue.queuedKeys), [addQueue.queuedKeys]);
 
   async function loadSuggestions() {
     setSuggestionsLoading(true);
@@ -65,22 +85,35 @@ export function LibraryPage() {
     }
   }
 
-  async function refresh() {
-    setLoading(true);
-    setError(null);
+  async function refresh(quiet = false) {
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const list = await api().library.list();
       setItems(list);
+      setSuggestions((prev) => prev.filter((s) => !suggestionInLibrary(list, s)));
     } catch (err) {
       setError(ipcErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, []);
+
+  useEffect(() => {
+    if (addQueue.lastError) setError(addQueue.lastError);
+    else if (addQueue.completed > 0) setError(null);
+  }, [addQueue.lastError, addQueue.completed]);
+
+  useEffect(() => {
+    if (addQueue.completed === 0) return;
+    void refresh(true);
+  }, [addQueue.completed]);
 
   useEffect(() => {
     try {
@@ -91,12 +124,17 @@ export function LibraryPage() {
   }, [filter]);
 
   useEffect(() => {
+    if (filter !== "foryou") return;
+    if (loading) return;
     if (items.length === 0) {
       setSuggestions([]);
+      suggestionsFetched.current = false;
       return;
     }
-    loadSuggestions();
-  }, [items]);
+    if (suggestionsFetched.current) return;
+    suggestionsFetched.current = true;
+    void loadSuggestions();
+  }, [filter, items.length, loading]);
 
   const filtered = useMemo(() => {
     let list = items;
@@ -116,17 +154,9 @@ export function LibraryPage() {
   const hasHighRating = items.some((i) => i.status !== "dropped" && (i.rating ?? 0) >= 7);
   const hasAnyRating = items.some((i) => i.status !== "dropped" && i.rating !== null);
 
-  async function addSuggestion(item: SearchResultItem) {
-    const key = `${item.externalSource}-${item.externalId}`;
-    setAddingKey(key);
-    try {
-      await api().add.fromSearchResult(item);
-      await refresh();
-    } catch (err) {
-      setSuggestionsError(ipcErrorMessage(err));
-    } finally {
-      setAddingKey(null);
-    }
+  function addSuggestion(item: SearchResultItem) {
+    setError(null);
+    enqueueAdd(item);
   }
 
   return (
@@ -171,28 +201,40 @@ export function LibraryPage() {
       </div>
 
       {error && <p className="error-text">{error}</p>}
+      {addQueue.pending > 0 && (
+        <p className="dim">
+          Adding {addQueue.pending} {addQueue.pending === 1 ? "title" : "titles"} in the background…
+        </p>
+      )}
 
       {showForYou ? (
         <section className="for-you">
-          {loading || suggestionsLoading ? (
+          {suggestionsLoading ? (
             <p className="dim">Finding titles that match your ratings…</p>
-          ) : suggestionsError ? (
+          ) : suggestionsError && suggestions.length === 0 ? (
             <p className="dim">{suggestionsError}</p>
           ) : suggestions.length > 0 ? (
-            <div className="poster-grid">
-              {suggestions.map((item) => {
-                const key = `${item.externalSource}-${item.externalId}`;
-                return (
-                  <SuggestionCard
-                    key={key}
-                    item={item}
-                    adding={addingKey === key}
-                    disabled={addingKey !== null}
-                    onAdd={addSuggestion}
-                  />
-                );
-              })}
-            </div>
+            <>
+              <div className="poster-grid">
+                {suggestions.map((item) => {
+                  const key = suggestionKey(item);
+                  const status =
+                    addQueue.addingKey === key
+                      ? "adding"
+                      : queuedKeySet.has(key)
+                        ? "queued"
+                        : "idle";
+                  return (
+                    <SuggestionCard
+                      key={key}
+                      item={item}
+                      status={status}
+                      onAdd={addSuggestion}
+                    />
+                  );
+                })}
+              </div>
+            </>
           ) : (
             <div className="empty-state">
               <p>
@@ -233,7 +275,10 @@ export function LibraryPage() {
       {settingsOpen && (
         <SettingsModal
           onClose={() => setSettingsOpen(false)}
-          onLibraryChanged={refresh}
+          onLibraryChanged={() => {
+            suggestionsFetched.current = false;
+            void refresh();
+          }}
         />
       )}
     </div>

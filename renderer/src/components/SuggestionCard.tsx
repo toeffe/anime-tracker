@@ -10,13 +10,14 @@ const SOURCE_LABEL: Record<SearchResultItem["externalSource"], string> = {
 
 interface Props {
   item: SearchResultItem;
-  adding: boolean;
-  disabled: boolean;
+  status: "idle" | "queued" | "adding";
   onAdd: (item: SearchResultItem) => void;
 }
 
-export function SuggestionCard({ item, adding, disabled, onAdd }: Props) {
+export function SuggestionCard({ item, status, onAdd }: Props) {
   const [imgFailed, setImgFailed] = useState(false);
+  const busy = status !== "idle";
+  const label = status === "adding" ? "Adding…" : status === "queued" ? "Queued" : "Add";
 
   return (
     <div className="suggestion-card">
@@ -42,10 +43,10 @@ export function SuggestionCard({ item, adding, disabled, onAdd }: Props) {
       <div className="suggestion-card-actions">
         <button
           className="primary suggestion-add"
-          disabled={disabled}
+          disabled={busy}
           onClick={() => onAdd(item)}
         >
-          {adding ? "Adding…" : "Add"}
+          {label}
         </button>
       </div>
     </div>

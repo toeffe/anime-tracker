@@ -238,6 +238,12 @@ function AnimeDetail({ item, onChange }: { item: MediaItem; onChange: () => void
     onChange();
   }
 
+  async function markSeasonWatched(watched: boolean) {
+    if (!season) return;
+    await api().season.markEpisodesWatched(season.id, watched);
+    onChange();
+  }
+
   async function continueWatching() {
     if (!nextEpisode) return;
     setSeasonId(nextEpisode.seasonId);
@@ -307,7 +313,17 @@ function AnimeDetail({ item, onChange }: { item: MediaItem; onChange: () => void
 
       {season && (
         <div className="episodes-section">
-          <h2>Episodes</h2>
+          <div className="episodes-header">
+            <h2>Episodes</h2>
+            {episodes.length > 0 && (
+              <button
+                className="ghost-button"
+                onClick={() => markSeasonWatched(watchedCount < episodes.length)}
+              >
+                {watchedCount < episodes.length ? "Mark all as watched" : "Mark all as unwatched"}
+              </button>
+            )}
+          </div>
           <EpisodeGrid
             episodes={episodes}
             onToggle={toggleEpisode}

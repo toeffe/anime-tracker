@@ -504,9 +504,31 @@ button.primary:disabled {
 .episodes-section h2 {
   font-family: var(--font-display);
   font-size: 18px;
-  margin: 0 0 16px;
+  margin: 0;
+}
+
+.episodes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border-top: 1px solid var(--border);
   padding-top: 24px;
+  margin-bottom: 16px;
+}
+
+.ghost-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ghost-button:hover {
+  border-color: var(--accent-dim);
 }
 
 /* ---------- episode punch-card grid (signature element) ---------- */
@@ -654,10 +676,28 @@ button.primary:disabled {
   z-index: 1;
 }
 
+.trailer-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .trailer-external {
   font-size: 12.5px;
   color: var(--accent);
   width: fit-content;
+  min-height: 1.25em;
+}
+
+.trailer-external-slot {
+  visibility: hidden;
 }
 
 .trailer-external:hover {

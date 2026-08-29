@@ -94,6 +94,7 @@ export interface AnimeTrackerAPI {
   };
   season: {
     rate(seasonId: string, rating: number | null): Promise<MediaItem>;
+    markEpisodesWatched(seasonId: string, watched: boolean): Promise<MediaItem>;
   };
   media: {
     rate(mediaId: string, rating: number | null): Promise<MediaItem>;

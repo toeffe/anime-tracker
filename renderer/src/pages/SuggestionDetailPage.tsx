@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { TrailerPlayer } from "../components/TrailerPlayer";
+import { enqueueAdd } from "../lib/addQueue";
 import { ipcErrorMessage } from "../lib/errors";
 import type { SearchResultItem } from "../types/shared";
 
@@ -38,7 +39,6 @@ export function SuggestionDetailPage() {
   const [item, setItem] = useState<SearchResultItem | null>(seeded);
   const [loading, setLoading] = useState(!seeded);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const externalId = id ? decodeURIComponent(id) : "";
@@ -75,17 +75,10 @@ export function SuggestionDetailPage() {
     navigate("/", { state: { tab: "foryou" } });
   }
 
-  async function addToLibrary() {
+  function addToLibrary() {
     if (!item) return;
-    setAdding(true);
-    setError(null);
-    try {
-      const { item: added } = await api().add.fromSearchResult(item);
-      navigate(`/media/${added.id}`);
-    } catch (err) {
-      setError(ipcErrorMessage(err));
-      setAdding(false);
-    }
+    enqueueAdd(item);
+    navigate("/", { state: { tab: "foryou" } });
   }
 
   if (loading) return <div className="detail-page"><p className="dim">Loading…</p></div>;
@@ -112,8 +105,8 @@ export function SuggestionDetailPage() {
         <button className="back-link" onClick={back}>
           ← For you
         </button>
-        <button className="primary" disabled={adding} onClick={addToLibrary}>
-          {adding ? "Adding…" : "Add to library"}
+        <button className="primary" onClick={addToLibrary}>
+          Add to library
         </button>
       </div>
 

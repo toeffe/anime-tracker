@@ -32,7 +32,7 @@ const YOUTUBE_PLAYER_CSS = `
 `;
 
 function watchUrl(videoId: string): string {
-  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&autoplay=0`;
 }
 
 function isAllowedYoutubeUrl(url: string): boolean {
@@ -57,12 +57,14 @@ function eventUrl(event: Event): string {
 export function YouTubeWatchWebview({ videoId }: { videoId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
     setFailed(false);
+    setReady(false);
     const src = watchUrl(videoId);
     const webview = document.createElement("webview");
     webview.setAttribute("partition", "persist:youtube");
@@ -81,15 +83,31 @@ export function YouTubeWatchWebview({ videoId }: { videoId: string }) {
     };
 
     const onReady = () => {
+      setReady(true);
       void guest.insertCSS?.(YOUTUBE_PLAYER_CSS);
       void guest.executeJavaScript?.(`(() => {
-        if (window.__atHushYoutube) return;
-        window.__atHushYoutube = true;
-        window.addEventListener("error", (event) => {
-          const msg = String(event.message || "");
-          if (msg.includes("startTime") || msg.includes("reportAllChanges")) {
-            event.preventDefault();
-          }
+        if (!window.__atHushYoutube) {
+          window.__atHushYoutube = true;
+          window.addEventListener("error", (event) => {
+            const msg = String(event.message || "");
+            if (msg.includes("startTime") || msg.includes("reportAllChanges")) {
+              event.preventDefault();
+            }
+          }, true);
+        }
+        if (window.__atNoAutoplay) return;
+        window.__atNoAutoplay = true;
+        let allowPlay = false;
+        const pauseIfAuto = (video) => {
+          if (allowPlay || !video || video.tagName !== "VIDEO") return;
+          video.autoplay = false;
+          video.pause();
+        };
+        document.addEventListener("play", (event) => pauseIfAuto(event.target), true);
+        document.addEventListener("playing", (event) => pauseIfAuto(event.target), true);
+        document.addEventListener("pointerdown", () => { allowPlay = true; }, true);
+        document.addEventListener("keydown", (event) => {
+          if (event.code === "Space" || event.key === "k" || event.key === "K") allowPlay = true;
         }, true);
       })()`);
     };
@@ -125,6 +143,7 @@ export function YouTubeWatchWebview({ videoId }: { videoId: string }) {
   return (
     <div className="trailer-frame">
       <div className="trailer-webview-host" ref={hostRef} />
+      {!ready && !failed && <p className="dim trailer-placeholder">Loading player…</p>}
       {failed && (
         <p className="dim trailer-webview-error">Couldn’t load the in-app player. Use Open on YouTube.</p>
       )}

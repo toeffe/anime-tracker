@@ -43,6 +43,7 @@ function createWindow() {
   win.webContents.on("will-attach-webview", (event, webPreferences, params) => {
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
+    webPreferences.autoplayPolicy = "document-user-activation-required";
     webPreferences.preload = path.join(__dirname, "youtube-guest-preload.js");
     const src = params.src ?? "";
     if (!isAllowedTrailerSrc(src)) {
@@ -196,6 +197,9 @@ function registerIpcHandlers() {
 
   ipcMain.handle("season:rate", (_e, seasonId: string, rating: number | null) =>
     store.rateSeason(seasonId, rating)
+  );
+  ipcMain.handle("season:markEpisodesWatched", (_e, seasonId: string, watched: boolean) =>
+    store.markSeasonEpisodesWatched(seasonId, watched)
   );
 
   ipcMain.handle("media:rate", (_e, mediaId: string, rating: number | null) =>

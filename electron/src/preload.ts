@@ -29,6 +29,8 @@ const api: AnimeTrackerAPI = {
   season: {
     rate: (seasonId: string, rating: number | null) =>
       ipcRenderer.invoke("season:rate", seasonId, rating),
+    markEpisodesWatched: (seasonId: string, watched: boolean) =>
+      ipcRenderer.invoke("season:markEpisodesWatched", seasonId, watched),
   },
   media: {
     rate: (mediaId: string, rating: number | null) =>
