@@ -1,0 +1,69 @@
+{
+  "name": "anime-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "toeffe",
+  "description": "Local desktop library for anime and movies. No account, no API keys.",
+  "keywords": [
+    "anime",
+    "tracker",
+    "electron",
+    "anilist",
+    "myanimelist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "electron/dist/src/main.js",
+  "scripts": {
+    "postinstall": "electron-builder install-app-deps",
+    "dev:renderer": "npm --prefix renderer run dev",
+    "dev:electron": "tsc -p electron/tsconfig.json && electron .",
+    "dev": "concurrently -k -n RENDERER,ELECTRON -c blue,green \"npm run dev:renderer\" \"wait-on tcp:5173 && npm run dev:electron\"",
+    "typecheck": "tsc -p electron/tsconfig.json --noEmit && npm --prefix renderer run build",
+    "build:renderer": "npm --prefix renderer run build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "electron .",
+    "package": "npm run build && electron-builder"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.1",
+    "concurrently": "^9.1.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.6.3",
+    "wait-on": "^8.0.1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "build": {
+    "appId": "com.local.animetracker",
+    "productName": "Anime Tracker",
+    "icon": "build/icon.ico",
+    "files": [
+      "electron/dist/**/*",
+      "renderer/dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": ["portable"]
+    }
+  }
+}

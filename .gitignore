@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output
+electron/dist/
+renderer/dist/
+release/
+out/
+dist/
+
+# Accidental tsc emit next to sources
+electron/types/*.js
+electron/types/*.js.map
+
+# Local library (never commit user data)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python helper env (icon conversion)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Logs and caches
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vite/
+*.tsbuildinfo
+
+# Editors / agents
+.idea/
+.cursor/
+*.swp
